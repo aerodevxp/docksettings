@@ -10,3 +10,5 @@ You can also add additional files/folders to track in the .csv file.
 
 ### Credits
 Huge thanks to msterbi for the original idea and work!
+
+AI DISCLOSURE: AI was used for parts of the script to save time
