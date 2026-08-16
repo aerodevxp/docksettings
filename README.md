@@ -3,6 +3,7 @@ DockSettings
 
 DockSettings is shell script intended to be used by handheld users with an external GPU.
 
+```
 Usage: ./docksettings.sh [options]
 
 Options:
@@ -14,7 +15,7 @@ Examples:
   ./docksettings.sh -g egpu    # Update map and switch to eGPU
   ./docksettings.sh -g igpu    # Update map and switch to iGPU
   ./docksettings.sh -g egpu -d # Dry run (test without changes)
-
+```
 
 Clone this repo wherever you'd like your shaders and settings to be backed up. Shaders can take a few GBs of space.
 
