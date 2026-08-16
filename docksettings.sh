@@ -1,16 +1,9 @@
 #!/bin/bash
 
-## Changelog
-## 26-06-2026 v1.23 Fixed Backup Logic
-## - FIXED: First switch now properly handles "unknown" state
-## - FIXED: Initial registration no longer overwrites existing profiles
-## - ADDED: File content hash verification in debug output
-## - ADDED: State file validation
-
 ## ==============================================================================
 ## BASIC VARIABLES
 ## ==============================================================================
-ROOTDIR="/home/deck/Documents"
+ROOTDIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 DOCK_DIR="$ROOTDIR/docksettings"
 MAP_FILE="$DOCK_DIR/master_map.txt"
 STATE_FILE="$DOCK_DIR/global_state"
@@ -23,6 +16,11 @@ TEMPFILE="/tmp/docksettings_steam_find.tmp"
 IGPU_PROFILES="$DOCK_DIR/profiles/igpu"
 EGPU_PROFILES="$DOCK_DIR/profiles/egpu"
 BACKUP_DIR="$DOCK_DIR/backups"
+SHADER_DIR="$DOCK_DIR/shaders"
+MESA_IGPU_SHADER="$SHADER_DIR/mesa_igpu"
+MESA_EGPU_SHADER="$SHADER_DIR/mesa_egpu"
+DXVK_IGPU_SHADER="$SHADER_DIR/dxvk_igpu"
+DXVK_EGPU_SHADER="$SHADER_DIR/dxvk_egpu"
 
 ## ==============================================================================
 ## DEBUG HELPERS
@@ -285,15 +283,112 @@ crawl_and_register() {
     fi
 }
 
+swap_shaders() {
+    local target_state="$1"
+    local mesa_target dxvk_target
+
+    if [ "$target_state" = "egpu" ]; then
+        mesa_target="$MESA_EGPU_SHADER"
+        dxvk_target="$DXVK_EGPU_SHADER"
+    else
+        mesa_target="$MESA_IGPU_SHADER"
+        dxvk_target="$DXVK_IGPU_SHADER"
+    fi
+
+    info "========== SHADER CACHE SWAP =========="
+    debug "Target Mesa dir: $mesa_target"
+    debug "Target DXVK dir: $dxvk_target"
+
+    mkdir -p "$mesa_target" "$dxvk_target"
+
+    # --- Mesa shader cache ---
+    local mesa_cache="$HOME/.cache/mesa_shader_cache"
+
+    if [ -d "$mesa_cache" ] && [ ! -L "$mesa_cache" ]; then
+        # Real directory — first encounter, migrate contents
+        warn "Mesa cache is a real directory, migrating to $mesa_target"
+        if [ "$DRYRUN" = "1" ]; then
+            info "  DRY RUN: Would migrate $mesa_cache -> $mesa_target"
+        else
+            cp -rp "$mesa_cache"/* "$mesa_target/" 2>/dev/null
+            rm -rf "$mesa_cache"
+            ln -s "$mesa_target" "$mesa_cache"
+            debug "  Mesa cache migrated and symlinked"
+        fi
+    else
+        if [ "$DRYRUN" = "1" ]; then
+            info "  DRY RUN: Would symlink $mesa_cache -> $mesa_target"
+        else
+            rm -f "$mesa_cache"
+            ln -s "$mesa_target" "$mesa_cache"
+            debug "  Mesa cache symlink repointed"
+        fi
+    fi
+
+    # --- DXVK state caches ---
+    local dxvk_swapped=0
+    local dxvk_migrated=0
+    local steam_compat_roots=(
+        "$HOME/.steam/steam/steamapps/compatdata"
+        "/run/media/system/GAMES/steamapps/compatdata"
+    )
+
+    for root in "${steam_compat_roots[@]}"; do
+        [ -d "$root" ] || continue
+
+        for prefix in "$root"/*/; do
+            [ -d "$prefix" ] || continue
+
+            local appid=$(basename "$prefix")
+            local dxvk_cache="${prefix}dxvk-state-cache"
+            local dxvk_stored="$dxvk_target/$appid"
+
+            debug "  DXVK [$appid]: $dxvk_cache"
+
+            if [ -f "$dxvk_cache" ] && [ ! -L "$dxvk_cache" ]; then
+                debug "    Real file detected, migrating"
+                if [ "$DRYRUN" = "1" ]; then
+                    info "    DRY RUN: Would migrate -> $dxvk_stored"
+                else
+                    cp -p "$dxvk_cache" "$dxvk_stored" 2>/dev/null
+                    rm -f "$dxvk_cache"
+                    ln -s "$dxvk_stored" "$dxvk_cache"
+                    dxvk_migrated=$((dxvk_migrated + 1))
+                fi
+            else
+                [ -f "$dxvk_stored" ] || touch "$dxvk_stored"
+
+                if [ "$DRYRUN" = "1" ]; then
+                    info "    DRY RUN: Would symlink -> $dxvk_stored"
+                else
+                    rm -f "$dxvk_cache"
+                    ln -s "$dxvk_stored" "$dxvk_cache"
+                    dxvk_swapped=$((dxvk_swapped + 1))
+                fi
+            fi
+        done
+    done
+
+    info "Shader swap summary:"
+    info "  - DXVK caches swapped: $dxvk_swapped"
+    info "  - DXVK caches migrated: $dxvk_migrated"
+}
+
 perform_swap() {
     local target_state="$1"
     local current_state=$(cat "$STATE_FILE" 2>/dev/null || echo "unknown")
+
+    
 
     info "========== PERFORMING SWAP =========="
     debug "Target state: $target_state"
     debug "Current state (from file): $current_state"
     debug "State file location: $STATE_FILE"
-
+    
+    if [ "$target_state" = "$current_state" ] && [ "$current_state" != "unknown" ]; then
+        echo "Already in $target_state mode — nothing to do. Files will not be backed up and replaced."
+        return 0
+    fi
     local save_to_dir=""
     local load_from_dir=""
 
@@ -421,7 +516,9 @@ perform_swap() {
     info "  - Files backed up (first run): $unknown_backups"
     info "  - Files applied: $apply_count"
     info "  - Files missing: $missing_count"
-
+    
+    swap_shaders "$target_state"
+    
     # Update state
     echo "$target_state" > "$STATE_FILE"
     info "State updated: Now in $target_state mode"
@@ -438,15 +535,14 @@ help() {
     echo "Usage: $0 [options]"
     echo ""
     echo "Options:"
-    echo "  -u          Global Update: Sync map and swap all"
     echo "  -g [state]  Target GPU state (igpu/egpu)"
     echo "  -d          Dry run: Log changes without writing"
     echo "  -h          Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0 -u -g egpu    # Update map and switch to eGPU"
-    echo "  $0 -u -g igpu    # Update map and switch to iGPU"
-    echo "  $0 -u -g egpu -d # Dry run (test without changes)"
+    echo "  $0 -g egpu    # Update map and switch to eGPU"
+    echo "  $0 -g igpu    # Update map and switch to iGPU"
+    echo "  $0 -g egpu -d # Dry run (test without changes)"
     echo ""
     echo "State file: $STATE_FILE"
     echo "  Current state: $(cat "$STATE_FILE" 2>/dev/null || echo "unknown")"
@@ -455,7 +551,6 @@ help() {
 while getopts "hug:d" option; do
     case $option in
         h) help; exit 0;;
-        u) UDEV_MODE=1;;
         g) GPU_OVERRIDE="$OPTARG";;
         d) DRYRUN=1;;
         \?) error "Invalid option"; exit 1;;
@@ -468,7 +563,6 @@ done
 
 debug "========== SCRIPT STARTING =========="
 debug "Arguments: $*"
-debug "UDEV_MODE: ${UDEV_MODE:-not set}"
 debug "GPU_OVERRIDE: ${GPU_OVERRIDE:-not set}"
 debug "DRYRUN: ${DRYRUN:-not set}"
 
@@ -501,14 +595,9 @@ debug "Current state before processing: $(cat "$STATE_FILE")"
 crawl_and_register
 
 # 2. Handle Swap
-if [ "$UDEV_MODE" = "1" ] && [ -n "$GPU_OVERRIDE" ]; then
+if [ -n "$GPU_OVERRIDE" ]; then
     perform_swap "$GPU_OVERRIDE"
-elif [ "$UDEV_MODE" = "1" ] && [ -z "$GPU_OVERRIDE" ]; then
-    error "-g flag required when using -u"
-    exit 1
-fi
-
-if [ -z "$UDEV_MODE" ]; then
+else
     help
 fi
 
