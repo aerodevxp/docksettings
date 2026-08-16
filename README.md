@@ -1,7 +1,7 @@
 DockSettings
 ============
 
-DockSettings is shell script intended to be used by handheld users with an external GPU.
+DockSettings is a shell script intended to be used by handheld users with an external GPU.
 
 ```
 Usage: ./docksettings.sh [options]
