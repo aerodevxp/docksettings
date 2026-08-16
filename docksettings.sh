@@ -63,11 +63,12 @@ crawl_and_register() {
     info "========== STARTING SCAN =========="
     debug "Log file cleared and initialized"
 
-    # Define the target zone patterns
+    # Define the target zone patterns. CHANGE THIS IF YOU HAVE AN EXTERNAL DRIVE. My personal games partition is mount under /run/media/system/GAMES/ hence why this is here.
     local zone_patterns=(
         "/home/deck/.steam/steam/steamapps/compatdata/*/pfx/drive_c/users/steamuser/"
         "/run/media/system/GAMES/steamapps/compatdata/*/pfx/drive_c/users/steamuser/"
-        "/run/media/system/GAMES/steamapps/common/"
+        "/home/deck/.steam/steam/steamapps/common/*/"
+        "/run/media/system/GAMES/steamapps/common/*/"
     )
 
     debug "Zone patterns defined: ${#zone_patterns[@]} patterns"
@@ -84,10 +85,11 @@ crawl_and_register() {
     # =====================================================================
     info "========== PHASE 1: STEAM ZONE SCAN =========="
     > "$TEMPFILE"
-    
+    # CHANGE THIS IF YOU HAVE AN EXTERNAL DRIVE
     steam_roots=(
         "/home/deck/.steam/steam/steamapps/compatdata"
         "/run/media/system/GAMES/steamapps/compatdata"
+        "/home/deck/.steam/steam/steamapps/common/"
         "/run/media/system/GAMES/steamapps/common/"
     )
     
