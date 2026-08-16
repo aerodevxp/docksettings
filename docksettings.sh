@@ -1,5 +1,15 @@
 #!/bin/bash
 
+## Changelog
+## 26-06-2026 v1.23 Fixed Backup Logic
+## - FIXED: First switch now properly handles "unknown" state
+## - FIXED: Initial registration no longer overwrites existing profiles
+## - ADDED: File content hash verification in debug output
+## - ADDED: State file validation
+
+## ==============================================================================
+## BASIC VARIABLES
+## ==============================================================================
 ROOTDIR="/home/deck/Documents"
 DOCK_DIR="$ROOTDIR/docksettings"
 MAP_FILE="$DOCK_DIR/master_map.txt"
@@ -14,7 +24,9 @@ IGPU_PROFILES="$DOCK_DIR/profiles/igpu"
 EGPU_PROFILES="$DOCK_DIR/profiles/egpu"
 BACKUP_DIR="$DOCK_DIR/backups"
 
-
+## ==============================================================================
+## DEBUG HELPERS
+## ==============================================================================
 debug() {
     echo "$DATE [DEBUG] $1"
     echo "$DATE [DEBUG] $1" >> "$DOCK_DIR/global.log"
@@ -45,7 +57,7 @@ file_hash() {
 }
 
 ## ==============================================================================
-## DISCOVERY & MAPPING
+## THE ENGINE: DISCOVERY & MAPPING
 ## ==============================================================================
 
 crawl_and_register() {
@@ -55,12 +67,9 @@ crawl_and_register() {
 
     # Define the target zone patterns
     local zone_patterns=(
-        #default OS Steam install
-        "$HOME/.local/share/Steam/steamapps/compatdata/*/pfx/drive_c/users/steamuser/"
-        #the script doesnt support symlinks. point to the REAL location of the files for it to work
-        #"/mnt/GAMES/symlinks/share/Steam/steamapps/compatdata/*/pfx/drive_c/users/steamuser/"
-        #example of external disk
-        #"/mnt/GAMES/steamapps/compatdata/*/pfx/drive_c/users/steamuser/"
+        "/home/deck/.steam/steam/steamapps/compatdata/*/pfx/drive_c/users/steamuser/"
+        "/run/media/system/GAMES/steamapps/compatdata/*/pfx/drive_c/users/steamuser/"
+        "/run/media/system/GAMES/steamapps/common/"
     )
 
     debug "Zone patterns defined: ${#zone_patterns[@]} patterns"
@@ -79,8 +88,9 @@ crawl_and_register() {
     > "$TEMPFILE"
     
     steam_roots=(
-        "/mnt/GAMES/steamapps/compatdata"
-        "/mnt/GAMES/symlinks/share/Steam/steamapps/compatdata"
+        "/home/deck/.steam/steam/steamapps/compatdata"
+        "/run/media/system/GAMES/steamapps/compatdata"
+        "/run/media/system/GAMES/steamapps/common/"
     )
     
     for root in "${steam_roots[@]}"; do
