@@ -1,11 +1,25 @@
 DockSettings
 ============
 
-DockSettings is shell script intended to be used by handheld users with an external GPU. 
+DockSettings is shell script intended to be used by handheld users with an external GPU.
 
-Put the script in your Documents folder, and the 99-...rules file in the /etc/udev/rules.d/ folder.
+Usage: ./docksettings.sh [options]
 
-You may also change the ROOT directory within the script if you do not want to use ~/Documents. 
+Options:
+  -g [state]  Target GPU state (igpu/egpu)
+  -d          Dry run: Log changes without writing
+  -h          Show help message
+
+Examples:
+  ./docksettings.sh -g egpu    # Update map and switch to eGPU
+  ./docksettings.sh -g igpu    # Update map and switch to iGPU
+  ./docksettings.sh -g egpu -d # Dry run (test without changes)
+
+
+Clone this repo wherever you'd like your shaders and settings to be backed up. Shaders can take a few GBs of space.
+
+Put 99-...rules file in the /etc/udev/rules.d/ folder.
+
 
 The script will auto backup configuration files and shader cache from Proton Prefixes (seperate backups for iGPU/eGPU usage) and apply them depending on which GPU is being used.
 You can also add additional files/folders to track in the .csv file.
